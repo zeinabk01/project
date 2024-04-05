@@ -3,6 +3,9 @@
 #include <string.h>
 #include <omp.h>
 
+#define MAX_TREE_HEIGHT 100
+
+// Node structure for Huffman tree
 struct Node {
     char data;
     int freq;
@@ -10,6 +13,13 @@ struct Node {
     struct Node* right;
 };
 
+// Structure for Huffman code
+struct Code {
+    char symbol;
+    char code[MAX_TREE_HEIGHT];
+};
+
+// Function to create a new node
 struct Node* newNode(char data, int freq) {
     struct Node* node = (struct Node*)malloc(sizeof(struct Node));
     if (node == NULL) {
@@ -22,17 +32,39 @@ struct Node* newNode(char data, int freq) {
     return node;
 }
 
+// Function to compare nodes based on frequency
 int compareNodes(const void* a, const void* b) {
     struct Node* l = *((struct Node**)a);
     struct Node* r = *((struct Node**)b);
     return (l->freq > r->freq) - (l->freq < r->freq);
 }
 
-char** huffmanCoding(char* input) {
+// Function to generate Huffman codes
+void generateCodes(struct Node* root, char* code, int depth, struct Code* huffmanCode) {
+    if (root == NULL)
+        return;
+
+    // If leaf node, store the code
+    if (root->left == NULL && root->right == NULL) {
+        huffmanCode[root->data].symbol = root->data;
+        strcpy(huffmanCode[root->data].code, code);
+    }
+
+    // Traverse left and right, appending '0' and '1' respectively
+    code[depth] = '0';
+    generateCodes(root->left, code, depth + 1, huffmanCode);
+    code[depth] = '1';
+    generateCodes(root->right, code, depth + 1, huffmanCode);
+}
+
+// Function to perform Huffman coding
+struct Code* huffmanCoding(char* input) {
     printf("Starting Huffman coding\n");
 
     int freq[256] = {0};
-    #pragma omp parallel for num_threads(2)
+
+    // Count frequencies in parallel
+    #pragma omp parallel for
     for (int i = 0; i < strlen(input); i++) {
         #pragma omp atomic
         freq[(int)input[i]]++;
@@ -40,13 +72,16 @@ char** huffmanCoding(char* input) {
 
     printf("Frequency calculation completed\n");
 
+    // Create nodes for characters with non-zero frequency
     struct Node* nodes[256];
     int num_nodes = 0;
 
-    #pragma omp parallel for num_threads(2)
+    #pragma omp parallel for
     for (int i = 0; i < 256; i++) {
         if (freq[i] > 0) {
             nodes[i] = newNode((char)i, freq[i]);
+            #pragma omp atomic
+            num_nodes++;
         } else {
             nodes[i] = NULL;
         }
@@ -54,72 +89,61 @@ char** huffmanCoding(char* input) {
 
     printf("Node creation completed\n");
 
-    while (1) {
-        // Find the two nodes with the smallest frequencies
-        int min1 = -1, min2 = -1;
-        #pragma omp parallel for num_threads(4)
+    // Build Huffman tree
+    while (num_nodes > 1) {
+        struct Node* left = NULL;
+        struct Node* right = NULL;
+
+        // Find two nodes with the lowest frequencies
+        #pragma omp parallel for
         for (int i = 0; i < 256; i++) {
             if (nodes[i] != NULL) {
                 #pragma omp critical
                 {
-                    if (min1 == -1 || nodes[i]->freq < nodes[min1]->freq) {
-                        min2 = min1;
-                        min1 = i;
-                    } else if (min2 == -1 || nodes[i]->freq < nodes[min2]->freq) {
-                        min2 = i;
+                    if (left == NULL || (nodes[i]->freq < left->freq && right == NULL)) {
+                        left = nodes[i];
+                    } else if (right == NULL || nodes[i]->freq < right->freq) {
+                        right = nodes[i];
                     }
                 }
             }
         }
 
-        // If only one node left, Huffman tree construction completed
-        if (min2 == -1)
-            break;
-
-        // Create a new node with combined frequency
-        struct Node* top = newNode('$', nodes[min1]->freq + nodes[min2]->freq);
-        top->left = nodes[min1];
-        top->right = nodes[min2];
+        // Create parent node with combined frequency
+        struct Node* top = newNode('$', left->freq + right->freq);
+        top->left = left;
+        top->right = right;
 
         // Set one of the min nodes to NULL
         #pragma omp critical
         {
-            nodes[min1] = top;
-            nodes[min2] = NULL;
+            num_nodes--;
+            left = top;
+            right = NULL;
         }
     }
 
     printf("Huffman tree construction completed\n");
 
-    char** huffmanCode = (char**)malloc(sizeof(char*) * 256);
-    if (huffmanCode == NULL) {
-        printf("Memory allocation error\n");
-        exit(EXIT_FAILURE);
-    }
-    for (int i = 0; i < 256; i++) {
-        huffmanCode[i] = (char*)malloc(256 * sizeof(char));
-        if (huffmanCode[i] == NULL) {
-            printf("Memory allocation error\n");
-            exit(EXIT_FAILURE);
-        }
-        huffmanCode[i][0] = '\0'; // Initialize each string in the array
-    }
+    // Generate Huffman codes
+    struct Code* huffmanCode = (struct Code*)malloc(sizeof(struct Code) * 256);
+    char code[MAX_TREE_HEIGHT];
+    generateCodes(nodes[0], code, 0, huffmanCode);
+
+    printf("Huffman code generation completed\n");
 
     return huffmanCode;
 }
 
-
-void freeHuffmanCode(char** huffmanCode) {
-    for (int i = 0; i < 256; i++) {
-        free(huffmanCode[i]);
-    }
+// Function to free memory allocated for Huffman codes
+void freeHuffmanCode(struct Code* huffmanCode) {
     free(huffmanCode);
 }
 
 int main() {
-    char* input = "zeinab";
+    char* input = "hello world";
     double start = omp_get_wtime(); 
-    char** compressed = huffmanCoding(input);
+    struct Code* compressed = huffmanCoding(input);
     double end = omp_get_wtime();
     double elapsed = end - start;
 
