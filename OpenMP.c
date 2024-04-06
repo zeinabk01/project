@@ -64,7 +64,7 @@ struct Code* huffmanCoding(char* input) {
     int freq[256] = {0};
 
     // Count frequencies in parallel
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(2)
     for (int i = 0; i < strlen(input); i++) {
         #pragma omp atomic
         freq[(int)input[i]]++;
