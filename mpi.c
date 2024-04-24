@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
     int inputSize = strlen(data);
     int bufferSize = inputSize / size + (inputSize % size != 0 ? 1 : 0);
 
-    char buffer[bufferSize];
+    char buffer[bufferSize]; // it allocates memory for each process to store its portion of the data in the buffer array.
     MPI_Scatter(data, bufferSize, MPI_CHAR, buffer, bufferSize, MPI_CHAR, 0, MPI_COMM_WORLD);
 
     int freq[256] = {0};
