@@ -7,7 +7,7 @@
 
 #define MAX_SYMBOLS 256
 #define MAX_INPUT_LENGTH 1000000
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 256
 
 typedef struct {
     int symbol;
